@@ -326,6 +326,34 @@ export default class HTMLExporterPlugin extends Plugin {
   <meta charset="UTF-8">
   <title>${file.basename}</title>
   ${styleTag.outerHTML}
+  <!-- 添加Mermaid.js库 -->
+  <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      // 初始化mermaid
+      mermaid.initialize({
+        startOnLoad: true,
+        theme: document.body.classList.contains('theme-dark') ? 'dark' : 'default'
+      });
+      
+      // 手动处理pre>code.language-mermaid代码块
+      document.querySelectorAll('pre > code.language-mermaid').forEach(function(codeBlock) {
+        const pre = codeBlock.parentElement;
+        if (pre) {
+          // 创建div并添加mermaid类
+          const mermaidDiv = document.createElement('div');
+          mermaidDiv.className = 'mermaid';
+          mermaidDiv.innerHTML = codeBlock.textContent || '';
+          
+          // 替换pre元素为mermaidDiv
+          pre.parentNode?.replaceChild(mermaidDiv, pre);
+          
+          // 重新初始化该节点
+          mermaid.init(undefined, mermaidDiv);
+        }
+      });
+    });
+  </script>
   <style>
     body { 
       margin: 0; 
@@ -492,6 +520,33 @@ export default class HTMLExporterPlugin extends Plugin {
           html += '<meta charset="UTF-8">\n';
           html += '<meta name="viewport" content="width=device-width, initial-scale=1.0">\n';
           html += `<title>${file.basename || 'Obsidian内容'}</title>\n`;
+          // 添加Mermaid.js库
+          html += '<script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>\n';
+          html += '<script>\n';
+          html += '  document.addEventListener("DOMContentLoaded", function() {\n';
+          html += '    mermaid.initialize({\n';
+          html += '      startOnLoad: true,\n';
+          html += '      theme: document.body.classList.contains("theme-dark") ? "dark" : "default"\n';
+          html += '    });\n';
+          html += '    \n';
+          // 手动处理pre>code.language-mermaid代码块
+          html += '    document.querySelectorAll("pre > code.language-mermaid").forEach(function(codeBlock) {\n';
+          html += '      const pre = codeBlock.parentElement;\n';
+          html += '      if (pre) {\n';
+          html += '        // 创建div并添加mermaid类\n';
+          html += '        const mermaidDiv = document.createElement("div");\n';
+          html += '        mermaidDiv.className = "mermaid";\n';
+          html += '        mermaidDiv.innerHTML = codeBlock.textContent || "";\n';
+          html += '        \n';
+          html += '        // 替换pre元素为mermaidDiv\n';
+          html += '        pre.parentNode?.replaceChild(mermaidDiv, pre);\n';
+          html += '        \n';
+          html += '        // 重新初始化该节点\n';
+          html += '        mermaid.init(undefined, mermaidDiv);\n';
+          html += '      }\n';
+          html += '    });\n';
+          html += '  });\n';
+          html += '</script>\n';
           html += '<style>\n';
           
           // 只收集必要的样式

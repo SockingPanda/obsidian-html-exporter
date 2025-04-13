@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-html-exporter",
-	"version": "1.0.2",
+	"version": "1.0.3",
 	"description": "Export rendered Obsidian view as complete HTML with embedded images and style preservation",
 	"main": "main.js",
 	"scripts": {
