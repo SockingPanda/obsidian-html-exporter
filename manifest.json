@@ -1,0 +1,11 @@
+{
+	"id": "obsidian-html-exporter",
+	"name": "HTML Renderer Exporter",
+	"version": "1.0.0",
+	"minAppVersion": "0.15.0",
+	"description": "将Obsidian当前渲染视图导出为完整HTML文件，保留所有样式",
+	"author": "SockingPanda",
+	"authorUrl": "https://github.com/SockingPanda",
+	"fundingUrl": "https://obsidian.md/pricing",
+	"isDesktopOnly": true
+}
