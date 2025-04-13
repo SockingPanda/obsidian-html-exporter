@@ -1,14 +1,14 @@
 {
 	"name": "obsidian-html-exporter",
-	"version": "1.0.0",
-	"description": "将Obsidian当前渲染视图导出为完整HTML文件，保留所有样式",
+	"version": "1.0.1",
+	"description": "Export rendered Obsidian view as complete HTML with embedded images and style preservation",
 	"main": "main.js",
 	"scripts": {
 		"dev": "node esbuild.config.mjs",
 		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
 		"version": "node version-bump.mjs && git add manifest.json versions.json"
 	},
-	"keywords": ["obsidian", "plugin", "html", "export", "renderer"],
+	"keywords": ["obsidian", "plugin", "html", "export", "renderer", "embed", "base64", "images", "markdown", "backlink"],
 	"author": "SockingPanda",
 	"license": "MIT",
 	"devDependencies": {
