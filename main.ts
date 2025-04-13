@@ -1,4 +1,4 @@
-import { Plugin, Notice, TFile, MetadataCache, MarkdownRenderer, Vault } from 'obsidian';
+import { Plugin, Notice, TFile, MetadataCache, MarkdownRenderer, Vault, Component, MarkdownView } from 'obsidian';
 
 export default class HTMLExporterPlugin extends Plugin {
   // 转换图片为base64格式的函数
@@ -142,6 +142,49 @@ export default class HTMLExporterPlugin extends Plugin {
       }
     }
     
+    // 处理internal-embed类的span元素（通常是粘贴的图片）
+    const embedSpans = element.querySelectorAll('span.internal-embed');
+    
+    for (let i = 0; i < embedSpans.length; i++) {
+      const span = embedSpans[i];
+      const srcAttr = span.getAttribute('src');
+      const altAttr = span.getAttribute('alt');
+      
+      if (srcAttr && srcAttr.match(/\.(png|jpg|jpeg|gif|svg|webp)$/i)) {
+        try {
+          // 查找对应的图片文件
+          let path = srcAttr;
+          console.log(`处理内嵌图片: ${path}`);
+          
+          // 查找文件
+          const file = this.findFile(path);
+          
+          if (file) {
+            // 转换为base64格式
+            const base64 = await this.getImageBase64(file);
+            
+            if (base64) {
+              // 创建img元素替换span
+              const img = document.createElement('img');
+              img.setAttribute('src', base64);
+              img.setAttribute('alt', altAttr || file.basename);
+              if (span.classList.contains('image-embed')) img.classList.add('image-embed');
+              span.parentElement?.replaceChild(img, span);
+            }
+          } else {
+            console.warn(`内嵌图片未找到: ${path}`);
+            // 替换为空白图片，防止断链
+            const img = document.createElement('img');
+            img.setAttribute('src', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=');
+            img.setAttribute('alt', `(图片未找到: ${path})`);
+            span.parentElement?.replaceChild(img, span);
+          }
+        } catch (error) {
+          console.error('处理内嵌图片错误:', error);
+        }
+      }
+    }
+    
     // 处理Obsidian内部链接（双链）
     const linkElements = element.querySelectorAll('a.internal-link');
     
@@ -220,32 +263,47 @@ export default class HTMLExporterPlugin extends Plugin {
   }
 
   async onload() {
-    // 添加直接下载HTML的命令
+    // 添加新的命令：强制渲染整个文件并导出
     this.addCommand({
-      id: 'download-rendered-content',
-      name: '直接下载当前渲染内容',
+      id: 'export-full-file-content',
+      name: '导出整个文件内容（强制渲染所有部分）',
       callback: async () => {
         try {
-          // 尝试获取Markdown渲染内容
-          const contentEl = 
-            document.querySelector('.markdown-reading-view .markdown-preview-view') || 
-            document.querySelector('.markdown-preview-view') ||
-            document.querySelector('.workspace-leaf.mod-active .view-content') ||
-            document.querySelector('.workspace-leaf.mod-active');
-            
-          if (!contentEl) {
-            new Notice('未找到渲染内容');
-          return;
-        }
-
-          // 显示处理中提示
-          new Notice('正在处理图片和链接，请稍候...');
+          // 获取当前活动编辑器
+          const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
           
-          // 克隆内容
-          const clonedContent = contentEl.cloneNode(true) as HTMLElement;
+          if (!activeView) {
+            new Notice('没有找到活动的Markdown文件');
+            return;
+          }
+          
+          // 获取文件对象
+          const file = activeView.file;
+          if (!file) {
+            new Notice('无法获取当前文件');
+            return;
+          }
+          
+          // 显示处理中提示
+          new Notice('正在渲染整个文件内容，请稍候...');
+          
+          // 读取文件内容
+          const fileContent = await this.app.vault.read(file);
+          
+          // 创建临时元素来渲染内容
+          const tempDiv = document.createElement('div');
+          tempDiv.className = 'markdown-preview-view markdown-rendered';
+          
+          // 使用Obsidian的MarkdownRenderer渲染整个内容
+          await MarkdownRenderer.renderMarkdown(
+            fileContent, 
+            tempDiv, 
+            file.path, 
+            this
+          );
           
           // 处理所有内部链接和图片
-          await this.processInternalLinks(clonedContent);
+          await this.processInternalLinks(tempDiv);
           
           // 内联所有CSS样式
           const styles = Array.from(document.styleSheets).map(sheet => {
@@ -266,7 +324,7 @@ export default class HTMLExporterPlugin extends Plugin {
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <title>${document.title}</title>
+  <title>${file.basename}</title>
   ${styleTag.outerHTML}
   <style>
     body { 
@@ -276,6 +334,23 @@ export default class HTMLExporterPlugin extends Plugin {
       line-height: 1.6;
       background-color: var(--background-primary);
       color: var(--text-normal);
+    }
+    
+    /* 禁用所有外部字体加载，使用系统字体 */
+    @font-face {
+      font-family: 'all-external-fonts';
+      src: local('Arial');
+      font-display: swap;
+    }
+    
+    /* 使用系统字体代替所有其他字体 */
+    * {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+    }
+    
+    .markdown-preview-view {
+      padding: 0;
+      margin: 0 auto;
     }
     
     .theme-dark {
@@ -326,10 +401,17 @@ export default class HTMLExporterPlugin extends Plugin {
       margin-left: 0.3em;
       vertical-align: super;
     }
+    
+    /* 移动设备响应式调整 */
+    @media (max-width: 800px) {
+      body {
+        padding: 15px;
+      }
+    }
   </style>
 </head>
 <body class="${document.body.className}">
-  ${clonedContent.outerHTML}
+  ${tempDiv.outerHTML}
 </body>
 </html>`;
           
@@ -338,13 +420,13 @@ export default class HTMLExporterPlugin extends Plugin {
           const url = URL.createObjectURL(blob);
           const a = document.createElement('a');
           a.href = url;
-          a.download = `${document.title.replace(/[^\w\s]/gi, '') || 'ObsidianExport'}_${Date.now()}.html`;
+          a.download = `${file.basename}_完整内容_${Date.now()}.html`;
           document.body.appendChild(a);
           a.click();
           document.body.removeChild(a);
           URL.revokeObjectURL(url);
           
-          new Notice('HTML导出成功！包含内嵌图片和双链信息');
+          new Notice('完整HTML导出成功！');
         } catch (error) {
           console.error('导出失败:', error);
           new Notice('导出失败: ' + error.message);
@@ -352,37 +434,64 @@ export default class HTMLExporterPlugin extends Plugin {
       }
     });
 
-    // 保存当前渲染内容到Obsidian库
+    // 添加简洁版的全文渲染导出命令
     this.addCommand({
-      id: 'save-rendered-content',
-      name: '保存当前渲染内容（简洁版）',
+      id: 'save-full-rendered-content',
+      name: '保存整个文件内容（简洁版）',
       callback: async () => {
         try {
-          // 尝试获取渲染内容 - 先尝试Markdown阅读视图，然后尝试其他可能的内容容器
-          const contentEl = 
-            document.querySelector('.markdown-reading-view .markdown-preview-view') || 
-            document.querySelector('.markdown-preview-view') ||
-            document.querySelector('.workspace-leaf.mod-active .view-content') ||
-            document.querySelector('.workspace-leaf.mod-active');
-            
-          if (!contentEl) {
-            new Notice('未找到渲染内容');
+          // 获取当前活动编辑器
+          const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+          
+          if (!activeView) {
+            new Notice('没有找到活动的Markdown文件');
+            return;
+          }
+          
+          // 获取文件对象
+          const file = activeView.file;
+          if (!file) {
+            new Notice('无法获取当前文件');
             return;
           }
           
           // 显示处理中提示
-          new Notice('正在处理图片和链接，请稍候...');
+          new Notice('正在渲染整个文件内容，请稍候...');
           
-          // 克隆内容
-          const clonedContent = contentEl.cloneNode(true) as HTMLElement;
+          // 读取文件内容
+          const fileContent = await this.app.vault.read(file);
+          
+          // 创建临时元素来渲染内容
+          const tempDiv = document.createElement('div');
+          tempDiv.className = 'markdown-preview-view markdown-rendered node-insert-event is-readable-line-width allow-fold-headings allow-fold-lists show-indentation-guide show-properties';
+          
+          // 添加tabindex div
+          const tabIndexDiv = document.createElement('div');
+          tabIndexDiv.tabIndex = -1;
+          
+          // 添加markdown-preview-sizer
+          const previewSizerDiv = document.createElement('div');
+          previewSizerDiv.className = 'markdown-preview-sizer markdown-preview-section';
+          
+          tempDiv.appendChild(tabIndexDiv);
+          tabIndexDiv.appendChild(previewSizerDiv);
+          
+          // 使用Obsidian的MarkdownRenderer渲染整个内容
+          await MarkdownRenderer.renderMarkdown(
+            fileContent, 
+            previewSizerDiv, 
+            file.path, 
+            this
+          );
           
           // 处理所有内部链接和图片
-          await this.processInternalLinks(clonedContent);
+          await this.processInternalLinks(previewSizerDiv);
           
           // 创建一个简化版本的HTML文档
           let html = '<!DOCTYPE html>\n<html>\n<head>\n';
           html += '<meta charset="UTF-8">\n';
-          html += `<title>${document.title || 'Obsidian内容'}</title>\n`;
+          html += '<meta name="viewport" content="width=device-width, initial-scale=1.0">\n';
+          html += `<title>${file.basename || 'Obsidian内容'}</title>\n`;
           html += '<style>\n';
           
           // 只收集必要的样式
@@ -441,6 +550,23 @@ export default class HTMLExporterPlugin extends Plugin {
               color: var(--text-normal);
             }
             
+            /* 禁用所有外部字体加载，使用系统字体 */
+            @font-face {
+              font-family: 'all-external-fonts';
+              src: local('Arial');
+              font-display: swap;
+            }
+            
+            /* 使用系统字体代替所有其他字体 */
+            * {
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+            }
+            
+            .markdown-preview-view {
+              padding: 0;
+              margin: 0 auto;
+            }
+            
             .theme-dark {
               --background-primary: #202020;
               --background-secondary: #303030;
@@ -468,6 +594,7 @@ export default class HTMLExporterPlugin extends Plugin {
               background-color: var(--text-muted);
             }
 
+
             /* 导出的内部链接样式 */
             .exported-internal-link {
               color: var(--text-accent);
@@ -489,20 +616,27 @@ export default class HTMLExporterPlugin extends Plugin {
               margin-left: 0.3em;
               vertical-align: super;
             }
+
+            /* 移动设备响应式调整 */
+            @media (max-width: 800px) {
+              body {
+                padding: 15px;
+              }
+            }
           `;
           
           html += '</style>\n</head>\n<body class="' + document.body.className + '">\n';
           
           // 添加内容
-          html += clonedContent.outerHTML;
+          html += tempDiv.outerHTML;
           html += '\n</body>\n</html>';
           
           // 使用当前文档名作为文件名基础
-          const baseFileName = document.title.replace(/[^\w\s]/gi, '') || 'ObsidianRendered';
-          const fileName = `${baseFileName}_${Date.now()}.html`;
+          const baseFileName = file.basename.replace(/[^\w\s]/gi, '') || 'ObsidianFullRendered';
+          const fileName = `${baseFileName}_完整内容_${Date.now()}.html`;
           
           await this.app.vault.create(fileName, html);
-          new Notice(`渲染内容已保存: ${fileName}`);
+          new Notice(`完整渲染内容已保存: ${fileName}`);
         } catch (error) {
           console.error('保存内容失败:', error);
           new Notice('保存内容失败: ' + error.message);

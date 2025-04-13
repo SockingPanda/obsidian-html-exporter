@@ -1,7 +1,7 @@
 {
 	"id": "obsidian-html-exporter",
 	"name": "HTML Renderer Exporter",
-	"version": "1.0.1",
+	"version": "1.0.2",
 	"minAppVersion": "0.15.0",
 	"description": "Export rendered Obsidian view as complete HTML with embedded images and style preservation",
 	"author": "SockingPanda",
